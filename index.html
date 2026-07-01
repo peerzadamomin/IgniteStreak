@@ -586,6 +586,25 @@ function checkIn(id){
   }
 }
 
+function undoCheckin(id){
+  const h=getHabit(id);
+  if(!h) return;
+  const td=today();
+  if(h.lastCheckin!==td){showToast("Nothing to undo today");return}
+  // Remove today's checkin
+  h.checkedDates=h.checkedDates.filter(d=>d!==td);
+  h.frozenDates=(h.frozenDates||[]).filter(d=>d!==td);
+  h.streak=Math.max(0,h.streak-1);
+  h.total=Math.max(0,h.total-1);
+  if(h.best===h.streak+1 && h.streak<h.best) h.best=Math.max(h.streak,h.best); // keep best
+  // restore lastCheckin to previous day
+  const sorted=[...h.checkedDates].sort();
+  h.lastCheckin=sorted.length>0?sorted[sorted.length-1]:null;
+  save(state);
+  renderAll();
+  showToast('↩ Today\'s log removed');
+}
+
 function openReset(id){
   pendingResetId=id;
   document.getElementById('resetOverlay').classList.add('open');
@@ -698,8 +717,10 @@ function buildCard(h){
     startText=`Since ${niceDate(h.startDate)} · ${daysTotal} day${daysTotal!==1?'s':''} tracked`;
   }
 
-  // can the freeze rescue yesterday?
-  const canRescue = h._streakBeforeReset && h._streakBeforeReset>0 && freezeAvail>0;
+  // streak is 0 but rescue data exists = missed exactly yesterday
+  const canRescue = h.streak===0 && h._streakBeforeReset>0 && freezeAvail>0;
+  // broken = streak>0 but last checkin wasn't today or yesterday (same-session edge case)
+  const brokenNow = h.streak>0 && h.lastCheckin && h.lastCheckin!==td && h.lastCheckin!==yest;
 
   // pill
   let pillClass='sp-pending',pillText='Log today to start';
@@ -707,13 +728,19 @@ function buildCard(h){
     const wasFrozen=h.frozenDates&&h.frozenDates.includes(td);
     pillClass=wasFrozen?'sp-frozen':'sp-done';
     pillText=wasFrozen?'🛡️ Frozen today':'Checked in ✓';
-  } else if(broken){
-    pillClass= canRescue ? 'sp-frozen' : 'sp-broken';
-    pillText= canRescue ? `🛡️ Freeze can restore ${h._streakBeforeReset}-day streak!` : 'Streak broken — log now';
+  } else if(canRescue){
+    pillClass='sp-frozen';
+    pillText=`🛡️ Freeze can restore your ${h._streakBeforeReset}-day streak!`;
+  } else if(brokenNow){
+    pillClass='sp-broken';
+    pillText='Streak broken — log now';
+  } else if(!h.lastCheckin && h.streak===0 && !h._streakBeforeReset){
+    pillClass='sp-pending';pillText='Not started yet';
+  } else if(isEvening){
+    pillClass='sp-warn';pillText="Don't break it tonight!";
+  } else {
+    pillClass='sp-pending';pillText=h.streak>0?'Log today to continue':'Start your streak';
   }
-  else if(!h.lastCheckin){pillClass='sp-pending';pillText='Not started yet'}
-  else if(isEvening){pillClass='sp-warn';pillText="Don't break it tonight!"}
-  else{pillClass='sp-pending';pillText=h.streak>0?'Log today to continue':'Start your streak'}
 
   // flame color shift at milestones
   let flameStyle='';
@@ -777,7 +804,8 @@ function buildCard(h){
         ${freezeAvail>0?`<span class="freeze-badge">${freezeAvail}</span>`:''}
       </button>
     </div>
-    <div style="margin-top:8px;text-align:center">
+    <div style="margin-top:8px;display:flex;justify-content:center;gap:16px">
+      <button onclick="undoCheckin('${h.id}')" ${!checkedToday?'disabled':''} style="background:none;border:none;color:var(--muted2);font-family:'Space Grotesk',sans-serif;font-size:.72rem;cursor:pointer;padding:4px 8px;transition:color .2s;opacity:${checkedToday?1:0.3}" onmouseover="if(!this.disabled)this.style.color='var(--e2)'" onmouseout="this.style.color='var(--muted2)'">↩ undo</button>
       <button onclick="openReset('${h.id}')" style="background:none;border:none;color:var(--muted2);font-family:'Space Grotesk',sans-serif;font-size:.72rem;cursor:pointer;padding:4px 8px;transition:color .2s" onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='var(--muted2)'">reset streak</button>
     </div>
   `;
