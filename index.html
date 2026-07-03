@@ -143,6 +143,17 @@ html,body{min-height:100vh;background:var(--bg);color:var(--text);font-family:'S
 .btn-freeze{flex:1;padding:13px 8px;border-radius:12px;border:1px solid var(--border2);background:none;color:var(--muted);cursor:pointer;font-family:'Space Grotesk',sans-serif;font-size:.78rem;font-weight:600;letter-spacing:.02em;transition:all .2s;position:relative}
 .btn-freeze:hover:not(:disabled){border-color:var(--blue);color:var(--blue)}
 .btn-freeze:disabled{opacity:.3;cursor:not-allowed}
+.btn-freeze.rescue-glow{
+  border-color:var(--blue);
+  color:var(--blue);
+  background:rgba(68,136,255,.08);
+  box-shadow:0 0 18px rgba(68,136,255,.4), 0 0 40px rgba(68,136,255,.15);
+  animation:rescuePulse 1.8s ease-in-out infinite;
+}
+@keyframes rescuePulse{
+  0%,100%{box-shadow:0 0 18px rgba(68,136,255,.4),0 0 40px rgba(68,136,255,.15)}
+  50%{box-shadow:0 0 28px rgba(68,136,255,.7),0 0 60px rgba(68,136,255,.3)}
+}
 .freeze-badge{position:absolute;top:-5px;right:-5px;background:var(--blue);color:#fff;border-radius:100px;font-size:.58rem;font-weight:700;padding:2px 5px;min-width:16px;text-align:center}
 
 /* ─── add habit panel ─── */
@@ -499,11 +510,12 @@ function daysBetween(ds1,ds2){
 //  FREEZE LOGIC
 // ═══════════════════════════════════════════
 function getFreezeAvailable(h){
+  // Grant 1 freeze per 7 days tracked, max 3 held at once
+  // Also always grant at least 1 if streak > 3 (so new users can actually use it)
+  if(!h.startDate) return h.streak>=3 ? 1 : 0;
   const td=today();
-  // grant 1 freeze per 30 days of total tracked
-  if(!h.startDate) return 0;
   const daysTracked = daysBetween(h.startDate, td)+1;
-  const grantsEarned = Math.floor(daysTracked/30);
+  const grantsEarned = Math.min(3, Math.max(h.streak>=3?1:0, Math.floor(daysTracked/7)));
   const used = h.freezeUses||0;
   return Math.max(0, grantsEarned - used);
 }
@@ -518,24 +530,24 @@ function useFreeze(id){
   if(h.lastCheckin===td){showToast('Already checked in today!');return}
   if(!h.frozenDates) h.frozenDates=[];
 
-  // CASE 1: streak auto-reset to 0 on load (missed yesterday) — _streakBeforeReset persisted in storage
-  const justBroke = h.streak===0 && h._streakBeforeReset>0 && h._lastCheckinBeforeReset===daysAgo(2);
-
-  // CASE 2: streak still > 0 but last checkin was before yesterday (same session, no reload)
+  // RESCUE: streak is 0 because it was reset — _streakBeforeReset tells us what it was
+  const canRescueNow = h.streak===0 && h._streakBeforeReset>0;
+  // SAME-SESSION: streak still >0 but last checkin was before yesterday
   const streakBroke = h.streak>0 && h.lastCheckin && h.lastCheckin!==td && h.lastCheckin!==yest;
 
-  if(justBroke || streakBroke){
+  if(canRescueNow || streakBroke){
     h.freezeUses=(h.freezeUses||0)+1;
     if(!h.frozenDates.includes(yest)) h.frozenDates.push(yest);
     if(!h.checkedDates.includes(yest)) h.checkedDates.push(yest);
     h.lastCheckin=yest;
-    if(justBroke && h._streakBeforeReset) h.streak=h._streakBeforeReset;
+    // restore the saved streak value
+    if(h._streakBeforeReset) h.streak=h._streakBeforeReset;
     // clear rescue data
     h._streakBeforeReset=null;
     h._lastCheckinBeforeReset=null;
     save(state);
     renderAll();
-    showToast('🛡️ Yesterday frozen — streak restored!');
+    showToast(`🛡️ Streak restored to ${h.streak} days!`);
     return;
   }
 
@@ -656,20 +668,21 @@ function renderAll(){
   state.habits.forEach(h=>{
     const td=today(),yest=yesterday();
     if(h.streak>0 && h.lastCheckin && h.lastCheckin!==td && h.lastCheckin!==yest){
-      // only zero if the break is more than 1 day old (can't freeze that far back)
       const daysMissed = daysBetween(h.lastCheckin, td);
       if(daysMissed===2){
-        // missed exactly yesterday — save streak so freeze can rescue
-        h._streakBeforeReset=h.streak;
-        h._lastCheckinBeforeReset=h.lastCheckin; // day before yesterday
-        h.streak=0;
+        // missed exactly yesterday — save so freeze can rescue
+        h._streakBeforeReset = h.streak;
+        h._lastCheckinBeforeReset = h.lastCheckin;
       } else {
-        // missed more than yesterday — too old to rescue
-        h._streakBeforeReset=null;
-        h._lastCheckinBeforeReset=null;
-        h.streak=0;
+        // missed more than 1 day — too far back
+        h._streakBeforeReset = null;
+        h._lastCheckinBeforeReset = null;
       }
+      h.streak = 0;
       save(state);
+    } else if(h.streak===0 && h._streakBeforeReset>0 && h.lastCheckin){
+      // already reset in a previous load — keep rescue data alive, just re-save
+      // (no change needed, data already in storage)
     }
   });
 
@@ -718,7 +731,7 @@ function buildCard(h){
   }
 
   // streak is 0 but rescue data exists = missed exactly yesterday
-  const canRescue = h.streak===0 && h._streakBeforeReset>0 && freezeAvail>0;
+  const canRescue = (h.streak===0 && h._streakBeforeReset>0) && freezeAvail>0;
   // broken = streak>0 but last checkin wasn't today or yesterday (same-session edge case)
   const brokenNow = h.streak>0 && h.lastCheckin && h.lastCheckin!==td && h.lastCheckin!==yest;
 
@@ -799,8 +812,8 @@ function buildCard(h){
       <button class="btn-log" ${checkedToday?'disabled':''} onclick="checkIn('${h.id}')">
         ${checkedToday?'✓ Done today':'🔥 Log Today'}
       </button>
-      <button class="btn-freeze" ${freezeAvail<=0?'disabled':''} onclick="useFreeze('${h.id}')" title="${canRescue?'Restore your broken streak':'Use a streak freeze'}">
-        ${canRescue?'🛡️ Rescue':'🛡️ Freeze'}
+      <button class="btn-freeze ${canRescue?'rescue-glow':''}" ${freezeAvail<=0&&!canRescue?'disabled':''} onclick="useFreeze('${h.id}')" title="${canRescue?'Tap to restore your streak!':'Use a streak freeze'}">
+        ${canRescue?'🛡️ Rescue Streak':'🛡️ Freeze'}
         ${freezeAvail>0?`<span class="freeze-badge">${freezeAvail}</span>`:''}
       </button>
     </div>
