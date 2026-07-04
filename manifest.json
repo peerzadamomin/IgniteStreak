@@ -1,0 +1,24 @@
+{
+  "name": "IgniteStreak",
+  "short_name": "IgniteStreak",
+  "description": "Build habits. Break limits.",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#08080d",
+  "theme_color": "#08080d",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "pm-logo.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "pm-logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
