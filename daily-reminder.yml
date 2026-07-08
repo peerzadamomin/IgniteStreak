@@ -1,0 +1,24 @@
+name: Daily Streak Reminder
+
+on:
+  schedule:
+    - cron: '30 16 * * *'
+  workflow_dispatch:
+
+jobs:
+  send-notification:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Push Notification via OneSignal
+        run: |
+          curl -X POST "https://onesignal.com/api/v1/notifications" \
+            -H "Authorization: Key ${{ secrets.ONESIGNAL_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "app_id": "a5a9a124-765d-46b0-9e7b-53be9bc01b45",
+              "included_segments": ["All"],
+              "headings": {"en": "🔥 IgniteStreak"},
+              "contents": {"en": "Don'\''t break your streak! Log in now 💪"},
+              "url": "https://streakcounterr.netlify.app",
+              "chrome_web_icon": "https://streakcounterr.netlify.app/pm-logo.png"
+            }'
