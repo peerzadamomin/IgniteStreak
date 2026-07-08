@@ -358,9 +358,27 @@ html,body{min-height:100vh;background:var(--bg);color:var(--text);font-family:'S
     OneSignalDeferred.push(async function(OneSignal) {
       await OneSignal.init({
         appId: "a5a9a124-765d-46b0-9e7b-53be9bc01b45",
-        safari_web_id: "",
         notifyButton: { enable: false },
         allowLocalhostAsSecureOrigin: true,
+        promptOptions: {
+          slidedown: {
+            prompts: [
+              {
+                type: "push",
+                autoPrompt: true,
+                text: {
+                  actionMessage: "Get daily reminders to keep your streak alive! 🔥",
+                  acceptButton: "Allow",
+                  cancelButton: "Later"
+                },
+                delay: {
+                  pageViews: 1,
+                  timeDelay: 5
+                }
+              }
+            ]
+          }
+        }
       });
     });
   </script>
@@ -401,7 +419,6 @@ html,body{min-height:100vh;background:var(--bg);color:var(--text);font-family:'S
 <header class="app-header">
 <div class="app-title">🔥 IgniteStreak</div>
 <div class="header-btns">
-<button class="backup-btn" onclick="openModal('notifOverlay')">🔔 Reminder</button>
 <button class="backup-btn" onclick="openModal('backupOverlay')">⬇ Backup</button>
 <button class="add-habit-btn" onclick="showAddModal()">+ New Habit</button>
 </div>
@@ -450,30 +467,6 @@ html,body{min-height:100vh;background:var(--bg);color:var(--text);font-family:'S
 <button class="cel-close" onclick="closeCelebration()">Keep going →</button>
 </div>
 </div>
-<!-- Notification Reminder Modal -->
-<div class="overlay" id="notifOverlay">
-  <div class="modal">
-    <h3>🔔 Daily Reminder</h3>
-    <p>Get notified to log your streak every day at your chosen time.</p>
-    <div style="margin-bottom:16px">
-      <label style="font-size:.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;display:block;margin-bottom:8px">Reminder Time</label>
-      <input type="time" id="reminderTime" value="22:00"
-        style="width:100%;background:var(--surface);border:1px solid var(--border2);border-radius:10px;color:var(--text);font-family:'Space Grotesk',sans-serif;font-size:1.1rem;padding:12px 14px;outline:none;cursor:pointer">
-    </div>
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;padding:12px 14px;background:var(--surface);border-radius:10px;border:1px solid var(--border2)">
-      <span style="font-size:.85rem;font-weight:600">Enable reminders</span>
-      <div id="notifToggle" onclick="toggleNotif()" style="width:44px;height:24px;border-radius:100px;background:var(--border2);cursor:pointer;position:relative;transition:background .2s">
-        <div id="notifThumb" style="width:20px;height:20px;border-radius:50%;background:#fff;position:absolute;top:2px;left:2px;transition:left .2s"></div>
-      </div>
-    </div>
-    <div id="notifStatus" style="font-size:.75rem;color:var(--muted);text-align:center;margin-bottom:16px;min-height:16px"></div>
-    <div class="modal-btns">
-      <button class="btn-confirm cancel" onclick="closeModal('notifOverlay')">Close</button>
-      <button class="btn-confirm safe" onclick="saveReminder()">Save</button>
-    </div>
-  </div>
-</div>
-
 <!-- Backup / Restore -->
 <div class="overlay" id="backupOverlay">
 <div class="modal">
@@ -977,178 +970,7 @@ function showToast(msg){
   t._t=setTimeout(()=>t.classList.remove('show'),2800);
 }
 
-function openModal(id){
-  document.getElementById(id).classList.add('open');
-  if(id==='notifOverlay') initNotifModal();
-}
-
-// ═══════════════════════════════════════════
-//  NOTIFICATIONS
-// ═══════════════════════════════════════════
-const NOTIF_KEY = 'ignitStreak_notif';
-
-function loadNotifSettings(){
-  try{ return JSON.parse(localStorage.getItem(NOTIF_KEY))||{enabled:false,time:'22:00'}; }
-  catch{ return {enabled:false,time:'22:00'}; }
-}
-function saveNotifSettings(s){ localStorage.setItem(NOTIF_KEY, JSON.stringify(s)); }
-
-function initNotifModal(){
-  const s = loadNotifSettings();
-  document.getElementById('reminderTime').value = s.time;
-  setToggleUI(s.enabled);
-  updateNotifStatus();
-}
-
-function setToggleUI(on){
-  const toggle = document.getElementById('notifToggle');
-  const thumb = document.getElementById('notifThumb');
-  if(on){
-    toggle.style.background = 'var(--green)';
-    thumb.style.left = '22px';
-  } else {
-    toggle.style.background = 'var(--border2)';
-    thumb.style.left = '2px';
-  }
-}
-
-function toggleNotif(){
-  const s = loadNotifSettings();
-  s.enabled = !s.enabled;
-  saveNotifSettings(s);
-  setToggleUI(s.enabled);
-  if(s.enabled) requestNotifPermission();
-  updateNotifStatus();
-}
-
-function notifSupported(){ return ('Notification' in window); }
-
-function updateNotifStatus(){
-  const el = document.getElementById('notifStatus');
-  if(!el) return;
-  const s = loadNotifSettings();
-  if(!notifSupported()){
-    el.textContent = '⚠️ Open on Netlify for notifications to work';
-    el.style.color = 'var(--red)';
-    return;
-  }
-  const perm = Notification.permission;
-  if(perm === 'denied'){
-    el.textContent = '⚠️ Notifications blocked — enable in browser settings';
-    el.style.color = 'var(--red)';
-  } else if(s.enabled && perm === 'granted'){
-    el.textContent = `✓ Reminder set for ${formatTime(s.time)} daily`;
-    el.style.color = 'var(--green)';
-  } else if(s.enabled){
-    el.textContent = 'Tap Save — browser will ask permission';
-    el.style.color = 'var(--e2)';
-  } else {
-    el.textContent = 'Reminders are off';
-    el.style.color = 'var(--muted)';
-  }
-}
-
-function formatTime(t){
-  const [h,m] = t.split(':').map(Number);
-  const ampm = h>=12?'PM':'AM';
-  const hr = h%12||12;
-  return `${hr}:${String(m).padStart(2,'0')} ${ampm}`;
-}
-
-async function requestNotifPermission(){
-  if(!notifSupported()) return false;
-  if(Notification.permission === 'granted') return true;
-  if(Notification.permission === 'denied') return false;
-  const result = await Notification.requestPermission();
-  return result === 'granted';
-}
-
-async function saveReminder(){
-  const time = document.getElementById('reminderTime').value;
-  const s = loadNotifSettings();
-  s.time = time;
-  if(s.enabled){
-    const granted = await requestNotifPermission();
-    if(!granted){
-      s.enabled = false;
-      saveNotifSettings(s);
-      setToggleUI(false);
-      updateNotifStatus();
-      showToast('⚠️ Please allow notifications first');
-      return;
-    }
-  }
-  saveNotifSettings(s);
-  updateNotifStatus();
-  closeModal('notifOverlay');
-  if(s.enabled){
-    showToast(`🔔 Reminder set for ${formatTime(time)}`);
-    scheduleReminderCheck();
-  } else {
-    showToast('Reminders turned off');
-  }
-}
-
-// Check every minute if it's time to notify
-function scheduleReminderCheck(){
-  // Clear any existing interval
-  if(window._reminderInterval) clearInterval(window._reminderInterval);
-  window._reminderInterval = setInterval(checkReminderTime, 60000);
-  checkReminderTime(); // check immediately too
-}
-
-function checkReminderTime(){
-  const s = loadNotifSettings();
-  if(!s.enabled) return;
-  if(!notifSupported()) return;
-  if(Notification.permission !== 'granted') return;
-
-  const now = new Date();
-  const [rh, rm] = s.time.split(':').map(Number);
-  const isReminderTime = now.getHours()===rh && now.getMinutes()===rm;
-  if(!isReminderTime) return;
-
-  // Don't notify if already logged today
-  const allLoggedToday = state.habits.length>0 && state.habits.every(h=>h.lastCheckin===today());
-  if(allLoggedToday) return;
-
-  // Don't notify more than once per day
-  const lastNotif = localStorage.getItem('lastNotifDate');
-  if(lastNotif === today()) return;
-  localStorage.setItem('lastNotifDate', today());
-
-  // Count unlogged habits
-  const unlogged = state.habits.filter(h=>h.lastCheckin!==today());
-  const msg = unlogged.length===1
-    ? `Don't break your ${unlogged[0].streak}-day streak on "${unlogged[0].name}"!`
-    : `You have ${unlogged.length} habits to log today. Keep your streaks alive!`;
-
-  // Try OneSignal first, fallback to browser notification
-  if(window.OneSignal){
-    OneSignalDeferred.push(function(OneSignal){
-      OneSignal.Notifications.requestPermission();
-    });
-  }
-
-  // Browser notification (works when tab is open)
-  if(notifSupported() && Notification.permission==='granted'){
-    new Notification('🔥 IgniteStreak Reminder', {
-      body: msg,
-      icon: 'pm-logo.png',
-      badge: 'pm-logo.png',
-      tag: 'streak-reminder',
-      requireInteraction: true
-    });
-  }
-}
-
-// Auto-start reminder check if enabled
-(function(){
-  const s = loadNotifSettings();
-  if(s.enabled && notifSupported() && Notification.permission==='granted'){
-    scheduleReminderCheck();
-  }
-})();
+function openModal(id){ document.getElementById(id).classList.add('open'); }
 
 // ═══════════════════════════════════════════
 //  EXPORT / IMPORT
